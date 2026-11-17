@@ -1,0 +1,44 @@
+name: build loupe
+
+on:
+  workflow_call:
+    inputs:
+      chroot:
+        type: string
+        required: true
+      commit:
+        description: Fedora dist-git commit to build
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build in COPR
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v7
+      - name: install copr-cli
+        run: pipx install copr-cli
+      - name: build in COPR
+        env:
+          COPR_CONFIG: ${{ secrets.COPR_CONFIG }}
+          CHROOT: ${{ inputs.chroot }}
+          COMMIT: ${{ inputs.commit }}
+        run: |
+          set -euo pipefail
+          [[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          mkdir -p ~/.config
+          printf '%s\n' "$COPR_CONFIG" > ~/.config/copr
+          script="$RUNNER_TEMP/loupe.sh"
+          sed "s/^commit=$/commit=${COMMIT}/" loupe/copr-source.sh > "$script"
+          grep -qx "commit=${COMMIT}" "$script"
+          copr-cli buildcustom screwyy/nocblue \
+            --chroot "$CHROOT" \
+            --script "$script" \
+            --script-chroot "$CHROOT" \
+            --script-builddeps 'git-core curl rpmautospec' \
+            --script-resultdir loupe
